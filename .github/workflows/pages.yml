@@ -1,0 +1,36 @@
+name: Configure GitHub Pages
+
+# Enable GitHub Pages to serve the site from the `main` branch root (/),
+# then let GitHub's built-in build & deployment publish index.html.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  contents: read
+
+concurrency:
+  group: pages-config
+  cancel-in-progress: false
+
+jobs:
+  enable-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable Pages (branch = main, path = /)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          payload='{"source":{"branch":"main","path":"/"},"build_type":"legacy"}'
+          # Create the Pages site; if it already exists, update it instead.
+          if ! echo "$payload" | gh api --method POST "repos/$REPO/pages" --input - ; then
+            echo "POST failed (site likely already exists) -> updating via PUT"
+            echo '{"source":{"branch":"main","path":"/"}}' | gh api --method PUT "repos/$REPO/pages" --input -
+          fi
+          echo "----- Current Pages configuration -----"
+          gh api "repos/$REPO/pages"
