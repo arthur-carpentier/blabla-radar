@@ -19,6 +19,9 @@ d'ouvrir la page dans un navigateur.
   par arrêt.
 - **Suivi multi-lignes** : ajoutez un ou plusieurs numéros de ligne, ils sont
   mémorisés localement (`localStorage`) pour les sessions suivantes.
+- **Trajet aléatoire** : pas de numéro sous la main ? Un clic sur 🎲 choisit au
+  hasard une ligne dont le trajet est **en cours** dans le flux temps réel
+  (au moins un arrêt déjà desservi et au moins un arrêt restant).
 - **Timeline des arrêts** : arrêts effectués, prochain arrêt et arrêts à venir,
   avec l'écart à l'horaire (avance / retard) affiché par arrêt.
 - **Barre de progression du trajet** : pourcentage de trajet parcouru, estimé
@@ -62,7 +65,8 @@ Aucune installation : ouvrez simplement la page.
   # puis visitez http://localhost:8000
   ```
 
-1. Saisissez un **numéro de ligne** BlaBlaCar Bus et ajoutez-le.
+1. Saisissez un **numéro de ligne** BlaBlaCar Bus, ou cliquez sur
+   **🎲 Trajet aléatoire** pour suivre une ligne en cours de trajet.
 2. Les lignes actives s'affichent avec leur timeline et leur carte.
 3. Activez le **GPS** pour projeter votre position réelle sur le trajet.
 

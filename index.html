@@ -791,6 +791,16 @@
   .message strong { color: var(--cyan); text-shadow: 0 0 6px var(--cyan); }
   .message .code { color: var(--pink); text-shadow: 0 0 6px var(--pink); font-family: ui-monospace, monospace; }
 
+  .welcome-actions {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+  .welcome-actions .form-row { width: 100%; max-width: 320px; margin-bottom: 0; }
+  .welcome-actions .btn:disabled { opacity: 0.5; cursor: wait; }
+
   .loader {
     display: inline-block;
     width: 12px; height: 12px;
@@ -846,7 +856,10 @@
         <input id="busInput" type="text" placeholder="Ajouter un n° de ligne…" autocomplete="off" inputmode="numeric" />
         <button class="btn" id="addBtn">Ajouter</button>
       </div>
-      <button class="btn alt" id="refreshBtn">↻ Rafraîchir</button>
+      <div class="form-row">
+        <button class="btn alt" id="refreshBtn">↻ Rafraîchir</button>
+        <button class="btn alt" id="randomBtn">🎲 Trajet aléatoire</button>
+      </div>
     </div>
   </details>
 
@@ -872,7 +885,6 @@ const PROXIES = [
 
 const STORAGE_KEY = 'neon-transit-buses';
 const GEO_KEY = 'neon-transit-geo-v3';
-const DEFAULTS = ['50050', '87715'];
 
 const $ = (id) => document.getElementById(id);
 const result = $('result');
@@ -900,7 +912,7 @@ function loadBuses() {
     const s = localStorage.getItem(STORAGE_KEY);
     if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a; }
   } catch (e) {}
-  return [...DEFAULTS];
+  return [];
 }
 function saveBuses() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(buses)); } catch (e) {}
@@ -1167,6 +1179,48 @@ async function fetchData() {
     } catch (err) { lastErr = err; }
   }
   throw lastErr || new Error('Toutes les sources ont échoué');
+}
+
+/* ----- Random line picker ----- */
+function journeyInProgress(j) {
+  // en cours = a déjà pointé au moins un arrêt ET il en reste au moins un
+  const rec = j.recordedCalls?.recordedCall ?? [];
+  const est = j.estimatedCalls?.estimatedCall ?? [];
+  return rec.length > 0 && est.length > 0;
+}
+
+function collectLines(data, inProgressOnly) {
+  const lines = new Set();
+  for (const frame of (data.estimatedJourneyVersionFrame ?? [])) {
+    for (const j of (frame.estimatedVehicleJourney ?? [])) {
+      const name = j.publishedLineName?.[0]?.value ?? '';
+      if (!name || buses.includes(name)) continue;
+      if (inProgressOnly && !journeyInProgress(j)) continue;
+      lines.add(name);
+    }
+  }
+  return [...lines];
+}
+
+async function pickRandomLine(btn) {
+  if (btn) btn.disabled = true;
+  statusEl.innerHTML = `<span class="loader"></span>// RECHERCHE D'UN TRAJET EN COURS //`;
+  try {
+    const { data } = await fetchData();
+    let lines = collectLines(data, true);
+    if (!lines.length) lines = collectLines(data, false); // aucun trajet en cours : ligne à venir
+    if (!lines.length) {
+      statusEl.innerHTML = '// AUCUN TRAJET DANS LE FLUX //';
+      return;
+    }
+    const pick = lines[Math.floor(Math.random() * lines.length)];
+    addLine(pick);
+  } catch (err) {
+    statusEl.innerHTML = '// ERREUR SYSTÈME //';
+    result.innerHTML = `<div class="message error">Impossible de récupérer les données : ${escapeHtml(err.message)}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 /* ----- Geocoding via Nominatim (with cache + rate limit) ----- */
@@ -1556,8 +1610,25 @@ function updateMapUserMarkers(journeyData) {
 
 async function loadAll() {
   if (!buses.length) {
-    result.innerHTML = `<div class="message">Aucune ligne à suivre. Ajoutez-en une via le menu en haut.</div>`;
-    statusEl.innerHTML = '// AUCUNE LIGNE //';
+    statusEl.innerHTML = '// AUCUNE LIGNE SUIVIE //';
+    result.innerHTML = `
+      <div class="message">
+        <strong>Bienvenue à bord.</strong>
+        <br><br>
+        Entrez un n° de ligne BlaBlaCar Bus à suivre,
+        <br>ou laissez le hasard choisir un trajet en cours.
+        <div class="welcome-actions">
+          <div class="form-row">
+            <input id="welcomeInput" type="text" placeholder="N° de ligne…" autocomplete="off" inputmode="numeric" />
+            <button class="btn" id="welcomeAddBtn">Suivre</button>
+          </div>
+          <button class="btn alt" id="welcomeRandomBtn">🎲 Trajet aléatoire en cours</button>
+        </div>
+      </div>`;
+    const wInput = $('welcomeInput');
+    $('welcomeAddBtn').addEventListener('click', () => addLine(wInput.value));
+    wInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addLine(wInput.value); } });
+    $('welcomeRandomBtn').addEventListener('click', e => pickRandomLine(e.currentTarget));
     return;
   }
 
@@ -1657,20 +1728,25 @@ function renderChips() {
   });
 }
 
-function addBus() {
-  const val = input.value.trim();
-  if (!val) return;
-  if (buses.includes(val)) { input.value = ''; return; }
+function addLine(val) {
+  val = (val || '').trim();
+  if (!val || buses.includes(val)) return;
   buses.push(val);
   saveBuses();
-  input.value = '';
   renderChips();
   loadAll();
+}
+
+function addBus() {
+  const val = input.value;
+  input.value = '';
+  addLine(val);
 }
 
 addBtn.addEventListener('click', addBus);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addBus(); } });
 refreshBtn.addEventListener('click', loadAll);
+$('randomBtn').addEventListener('click', e => pickRandomLine(e.currentTarget));
 gpsBtn.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
