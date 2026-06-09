@@ -22,6 +22,13 @@ d'ouvrir la page dans un navigateur.
 - **Trajet aléatoire** : pas de numéro sous la main ? Un clic sur 🎲 choisit au
   hasard une ligne dont le trajet est **en cours** dans le flux temps réel
   (au moins un arrêt déjà desservi et au moins un arrêt restant).
+- **Vue flotte** : l'onglet « 🚌 Toute la flotte » liste **tous les bus** du
+  flux avec un statut rapide par bus — retard (+x min), à l'heure, avance —
+  des compteurs globaux (bus actifs, en route, à l'heure, retard moyen) et un
+  bouton « Suivre » pour basculer n'importe quel bus en suivi détaillé.
+- **Light mode / dark mode** : thème clair ou sombre (palette vortex.io /
+  ODIL), mémorisé entre les sessions et calé par défaut sur la préférence
+  système ; les fonds de carte s'adaptent au thème.
 - **Timeline des arrêts** : arrêts effectués, prochain arrêt et arrêts à venir,
   avec l'écart à l'horaire (avance / retard) affiché par arrêt.
 - **Barre de progression du trajet** : pourcentage de trajet parcouru, estimé
@@ -78,6 +85,7 @@ Aucune installation : ouvrez simplement la page.
 | Élément        | Détail                                                        |
 | -------------- | ------------------------------------------------------------- |
 | Front          | HTML / CSS / JavaScript natif, fichier unique `index.html`    |
+| Design         | Charte vortex.io (ODIL) — Mulish, light/dark mode             |
 | Cartographie   | [Leaflet](https://leafletjs.com/) 1.9.4 + tuiles OpenStreetMap |
 | Données bus    | API SIRI-Lite BlaBlaCar (open data)                           |
 | Géocodage      | [Nominatim](https://nominatim.openstreetmap.org/) (OSM)       |
