@@ -53,6 +53,10 @@
     --map-future: #6E8CA0;
     --map-offroute: #2C5F8A;
     --map-bg: #f4f7f9;
+    --fl-ok: #02704F;
+    --fl-warn: #B98900;
+    --fl-late: #C03A23;
+    --fl-na: #8DA2B0;
   }
 
   /* ----- Thème sombre ----- */
@@ -84,6 +88,10 @@
     --map-future: #BBD1FF;
     --map-offroute: #DBE64C;
     --map-bg: #0B2433;
+    --fl-ok: #7FD8A8;
+    --fl-warn: #DBE64C;
+    --fl-late: #FF8A72;
+    --fl-na: #7E96A8;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -739,6 +747,62 @@
     border: 3px solid var(--ink);
     box-shadow: var(--shadow);
   }
+  .map-container .leaflet-popup-content-wrapper,
+  .map-container .leaflet-popup-tip {
+    background: var(--card);
+    color: var(--ink);
+  }
+
+  /* ----- FLEET MAP ----- */
+  .map-container.fleet { height: 440px; margin-top: 14px; }
+  .fleet-bus {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--card);
+    box-shadow: var(--shadow-soft);
+  }
+  .fleet-map-progress {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: var(--card);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: var(--shadow-soft);
+    pointer-events: none;
+  }
+  .fleet-legend {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-soft);
+    padding: 8px 11px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ink-dim);
+    line-height: 1.8;
+  }
+  .fleet-legend .sw {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .fleet-legend .ln {
+    display: inline-block;
+    width: 16px; height: 0;
+    border-top: 2px solid var(--ink-dim);
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .fleet-legend .ln.dash { border-top-style: dashed; opacity: 0.5; }
   .leaflet-control-recenter {
     background: var(--card);
     border: 1px solid var(--border-strong);
@@ -1036,6 +1100,17 @@ function applyTheme(t) {
     if (ms.map && ms.tiles) {
       ms.map.removeLayer(ms.tiles);
       ms.tiles = L.tileLayer(tileUrl(), TILE_OPTS).addTo(ms.map);
+    }
+  }
+  // carte de la flotte : fond + couleurs des tracés/bus recalculés
+  if (fleetMapState?.map) {
+    fleetMapState.map.removeLayer(fleetMapState.tiles);
+    fleetMapState.tiles = L.tileLayer(tileUrl(), TILE_OPTS).addTo(fleetMapState.map);
+    const colors = fleetColors();
+    for (const g of fleetMapState.groups) {
+      const color = colors[g.key];
+      g.lines.forEach(l => l.layer.setStyle({ color }));
+      if (g.marker) g.marker.setIcon(fleetBusIcon(color));
     }
   }
 }
@@ -1784,7 +1859,10 @@ function summarizeJourney(j) {
     done: rec.length,
     total: all.length,
     state,
-    delay: journeyDelayMin(j)
+    delay: journeyDelayMin(j),
+    recCalls: rec,
+    estCalls: est,
+    legPct: calcTripProgress(rec, est)?.pct ?? 0
   };
 }
 
@@ -1795,8 +1873,155 @@ function fleetDelayBadge(delay) {
   return `<span class="delta ok">à l'heure</span>`;
 }
 
+/* ----- Carte de la flotte ----- */
+// Lisibilité : couleur du tracé = retard (vert / jaune / rouge / gris),
+// style du trait = progression (plein = parcouru, pointillé estompé = restant).
+// Aucun marqueur de position personnelle sur cette carte.
+let lastFleet = null;
+let fleetMapState = null;
+let fleetDrawToken = 0;
+
+function destroyFleetMap() {
+  fleetDrawToken++;
+  if (fleetMapState?.map) fleetMapState.map.remove();
+  fleetMapState = null;
+}
+
+const fleetColors = () => ({
+  ok: cssVar('--fl-ok'), warn: cssVar('--fl-warn'),
+  late: cssVar('--fl-late'), na: cssVar('--fl-na')
+});
+
+function delayKey(delay) {
+  if (delay === null) return 'na';
+  if (delay > 15) return 'late';
+  if (delay > 5) return 'warn';
+  return 'ok';
+}
+
+const fleetBusIcon = color => L.divIcon({
+  className: '',
+  html: `<div class="fleet-bus" style="background:${color}"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+const FLEET_OPACITY = { done: 0.85, remain: 0.3 };
+
+function highlightFleetGroup(sel) {
+  if (!fleetMapState) return;
+  for (const g of fleetMapState.groups) {
+    const f = !sel || g === sel;
+    g.lines.forEach(l => l.layer.setStyle({ opacity: f ? FLEET_OPACITY[l.kind] : 0.05 }));
+    if (g.marker) g.marker.setOpacity(f ? 1 : 0.25);
+  }
+}
+
+function drawFleetJourney(s, coords) {
+  const colors = fleetColors();
+  const key = delayKey(s.delay);
+  const color = colors[key];
+
+  // coords aligné sur [recCalls, estCalls] ; on ne garde que les arrêts géocodés
+  const valid = [];
+  coords.forEach((c, i) => { if (c) valid.push({ c, isPast: i < s.recCalls.length }); });
+  if (!valid.length) return;
+
+  let lastPastIdx;
+  valid.forEach((v, i) => { if (v.isPast) lastPastIdx = i; });
+
+  // position du bus : interpolée dans l'étape courante, sinon premier arrêt
+  let busPos = null;
+  if (lastPastIdx !== undefined && lastPastIdx < valid.length - 1) {
+    const a = valid[lastPastIdx].c, b = valid[lastPastIdx + 1].c;
+    const p = s.legPct / 100;
+    busPos = [a[0] + (b[0] - a[0]) * p, a[1] + (b[1] - a[1]) * p];
+  } else {
+    busPos = valid[lastPastIdx ?? 0].c;
+  }
+
+  const all = valid.map(v => v.c);
+  const lines = [];
+
+  if (lastPastIdx !== undefined) {
+    const done = all.slice(0, lastPastIdx + 1);
+    done.push(busPos);
+    if (done.length >= 2) {
+      lines.push({ kind: 'done', layer: L.polyline(done, { color, weight: 3, opacity: FLEET_OPACITY.done }) });
+    }
+  }
+  const start = lastPastIdx !== undefined ? lastPastIdx : -1;
+  const remain = lastPastIdx !== undefined ? [busPos, ...all.slice(start + 1)] : all.slice(start + 1);
+  if (remain.length >= 2) {
+    lines.push({ kind: 'remain', layer: L.polyline(remain, { color, weight: 2, opacity: FLEET_OPACITY.remain, dashArray: '4, 6' }) });
+  }
+
+  const marker = L.marker(busPos, { icon: fleetBusIcon(color), zIndexOffset: 500 })
+    .bindPopup(`<b>Ligne ${escapeHtml(s.line)}</b><br>${escapeHtml(s.origin)} → ${escapeHtml(s.dest)}<br>${s.done}/${s.total} arrêts · ${fleetDelayBadge(s.delay)}`);
+
+  const group = { lines, marker, key };
+  lines.forEach(l => l.layer.addTo(fleetMapState.map));
+  marker.addTo(fleetMapState.map);
+  marker.on('popupopen', () => highlightFleetGroup(group));
+  marker.on('popupclose', () => highlightFleetGroup(null));
+  fleetMapState.groups.push(group);
+}
+
+async function toggleFleetMap(btn) {
+  const wrap = $('fleetMapWrap');
+  if (fleetMapState) {
+    destroyFleetMap();
+    wrap.innerHTML = '';
+    btn.textContent = '🗺️ Afficher la carte de la flotte';
+    return;
+  }
+  btn.textContent = '🗺️ Masquer la carte';
+  wrap.innerHTML = `<div class="map-container fleet"><div class="fleet-map-progress">Préparation…</div></div>`;
+  const container = wrap.querySelector('.map-container');
+  const progressEl = wrap.querySelector('.fleet-map-progress');
+
+  const map = L.map(container, { zoomControl: true, attributionControl: true }).setView([46.8, 3.6], 6);
+  const tiles = L.tileLayer(tileUrl(), TILE_OPTS).addTo(map);
+
+  const Legend = L.Control.extend({
+    options: { position: 'bottomleft' },
+    onAdd() {
+      const el = L.DomUtil.create('div', 'fleet-legend');
+      el.innerHTML = `
+        <span class="sw" style="background:var(--fl-ok)"></span>≤ 5 min &nbsp;
+        <span class="sw" style="background:var(--fl-warn)"></span>5–15 min &nbsp;
+        <span class="sw" style="background:var(--fl-late)"></span>&gt; 15 min &nbsp;
+        <span class="sw" style="background:var(--fl-na)"></span>inconnu<br>
+        <span class="ln"></span>parcouru &nbsp; <span class="ln dash"></span>restant`;
+      return el;
+    }
+  });
+  new Legend().addTo(map);
+
+  fleetMapState = { map, tiles, groups: [] };
+  const token = ++fleetDrawToken;
+
+  // trajets terminés exclus : le bus n'est plus en circulation
+  const list = (lastFleet ?? []).filter(s => s.state !== 'done');
+  let drawn = 0;
+  progressEl.textContent = `Trajets affichés : 0/${list.length}`;
+  for (const s of list) {
+    const coords = [];
+    for (const call of [...s.recCalls, ...s.estCalls]) {
+      const c = await geocode(call.stopPointName?.[0]?.value ?? '');
+      if (fleetDrawToken !== token) return; // carte fermée ou vue changée
+      coords.push(c);
+    }
+    drawFleetJourney(s, coords);
+    drawn++;
+    progressEl.textContent = `Trajets affichés : ${drawn}/${list.length}`;
+  }
+  progressEl.remove();
+}
+
 async function loadFleet() {
   refreshBtn.disabled = true;
+  destroyFleetMap();
   result.innerHTML = '';
   journeyMaps.clear();
   statusEl.innerHTML = `<span class="loader"></span>Chargement de la flotte…`;
@@ -1822,8 +2047,13 @@ async function loadFleet() {
     const avgLate = lateDelays.length ? Math.round(lateDelays.reduce((a, b) => a + b, 0) / lateDelays.length) : 0;
 
     const stateLabels = { 'en-route': 'en route', 'upcoming': 'départ à venir', 'done': 'trajet terminé' };
+    lastFleet = sums;
 
     result.innerHTML = `
+      <div class="fleet-filters">
+        <button class="btn alt" id="fleetMapBtn">🗺️ Afficher la carte de la flotte</button>
+      </div>
+      <div id="fleetMapWrap"></div>
       <div class="fleet-summary">
         <div class="stat-card"><div class="num">${sums.length}</div><div class="lbl">Bus au total</div></div>
         <div class="stat-card"><div class="num">${enRoute.length}</div><div class="lbl">En route</div></div>
@@ -1846,6 +2076,7 @@ async function loadFleet() {
     result.querySelectorAll('.fleet-follow').forEach(btn => {
       btn.addEventListener('click', () => addLine(btn.dataset.line));
     });
+    $('fleetMapBtn').addEventListener('click', e => toggleFleetMap(e.currentTarget));
 
     const ts = data.responseTimestamp ? new Date(data.responseTimestamp).toLocaleTimeString('fr-FR') : '';
     const proxyTag = proxyUsed > 0 ? ` · <span class="warn">via proxy</span>` : '';
@@ -1859,6 +2090,7 @@ async function loadFleet() {
 }
 
 async function loadAll() {
+  destroyFleetMap();
   if (!buses.length) {
     statusEl.innerHTML = 'Aucune ligne suivie';
     result.innerHTML = `

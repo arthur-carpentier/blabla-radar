@@ -26,6 +26,13 @@ d'ouvrir la page dans un navigateur.
   flux avec un statut rapide par bus — retard (+x min), à l'heure, avance —
   des compteurs globaux (bus actifs, en route, à l'heure, retard moyen) et un
   bouton « Suivre » pour basculer n'importe quel bus en suivi détaillé.
+- **Carte de la flotte** : tous les trajets sur une seule carte Leaflet, avec
+  double code couleur lisible — la **couleur** du tracé indique le retard
+  (vert ≤ 5 min, jaune 5–15 min, rouge > 15 min, gris inconnu) et le **style**
+  du trait la progression (plein = parcouru, pointillé estompé = restant).
+  Position interpolée de chaque bus, légende intégrée, clic sur un bus pour
+  isoler son trajet. La position GPS personnelle n'apparaît jamais sur cette
+  carte.
 - **Light mode / dark mode** : thème clair ou sombre (palette vortex.io /
   ODIL), mémorisé entre les sessions et calé par défaut sur la préférence
   système ; les fonds de carte s'adaptent au thème.
