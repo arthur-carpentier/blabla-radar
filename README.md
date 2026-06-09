@@ -57,7 +57,8 @@ d'ouvrir la page dans un navigateur.
    `codetabs`) jusqu'à obtenir une réponse.
 2. **Géocodage des arrêts** — les noms d'arrêts sont convertis en coordonnées
    GPS via **Nominatim** (OpenStreetMap), avec mise en cache local et respect
-   de la limite de débit du service.
+   de la limite de débit du service. Un indicateur flottant affiche la
+   progression du géocodage en temps réel (x/y lieux).
 3. **Projection sur le trajet** — la position de l'utilisateur (P) est projetée
    sur le segment [A, B] de l'étape courante à l'aide d'une projection
    équirectangulaire centrée sur le milieu du segment. On en déduit la fraction

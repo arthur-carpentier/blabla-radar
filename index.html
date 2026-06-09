@@ -986,6 +986,29 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Indicateur global de géocodage Nominatim */
+  .geo-indicator {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--card);
+    color: var(--ink-dim);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: var(--shadow);
+    z-index: 2000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    white-space: nowrap;
+  }
+  .geo-indicator.active { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .geo-indicator .ok-mark { color: var(--ok); }
+
   footer {
     margin-top: 40px;
     padding-top: 18px;
@@ -1051,6 +1074,8 @@
 
   <main id="result"></main>
 
+  <div class="geo-indicator" id="geoIndicator"></div>
+
   <footer>
     Source · <a href="https://open-data.bus.blablacar.com/api/siri-lite/estimated-timetable" target="_blank" rel="noopener">open-data.bus.blablacar.com</a>
   </footer>
@@ -1079,6 +1104,7 @@ const refreshBtn = $('refreshBtn');
 const chipsDisplay = $('chipsDisplay');
 const chipsEdit = $('chipsEdit');
 const gpsBtn = $('gpsBtn');
+const geoIndicator = $('geoIndicator');
 const themeBtn = $('themeBtn');
 const tabTracked = $('tabTracked');
 const tabFleet = $('tabFleet');
@@ -1455,29 +1481,62 @@ function cityFromStopName(name) {
   return s;
 }
 
+/* Indicateur global de progression du géocodage */
+let geoPending = 0;
+let geoDoneCount = 0;
+let geoHideTimer = null;
+
+function updateGeoIndicator() {
+  if (geoPending > 0) {
+    clearTimeout(geoHideTimer);
+    const total = geoDoneCount + geoPending;
+    geoIndicator.innerHTML = `<span class="loader"></span>Géocodage Nominatim : ${geoDoneCount}/${total} lieux`;
+    geoIndicator.classList.add('active');
+  } else if (geoDoneCount > 0) {
+    const n = geoDoneCount;
+    geoIndicator.innerHTML = `<span class="ok-mark">✓</span> ${n} lieu${n > 1 ? 'x' : ''} géocodé${n > 1 ? 's' : ''}`;
+    geoHideTimer = setTimeout(() => {
+      geoIndicator.classList.remove('active');
+      geoDoneCount = 0;
+    }, 1800);
+  }
+}
+
 async function geocode(stopName) {
   const key = cityFromStopName(stopName);
   if (!key) return null;
   if (geoCache[key]) return geoCache[key];
+  geoPending++;
+  updateGeoIndicator();
   return geoQueue = geoQueue.then(async () => {
-    if (geoCache[key]) return geoCache[key];
     try {
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(key)}&format=json&limit=1&countrycodes=fr,es,it,pt,be,nl,lu,de,ch,at,gb,ie,dk,se,no,fi,pl,cz,sk,hu,hr,si,gr&accept-language=fr`, {
-        headers: { 'Accept': 'application/json' }
-      });
-      const data = await r.json();
-      if (data && data[0]) {
-        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-        geoCache[key] = coords;
-        saveGeoCache();
-        await new Promise(res => setTimeout(res, 1100)); // Nominatim rate limit
-        return coords;
-      }
-    } catch (e) {}
-    geoCache[key] = null;
-    saveGeoCache();
-    return null;
+      return await geocodeUncached(key);
+    } finally {
+      geoPending--;
+      geoDoneCount++;
+      updateGeoIndicator();
+    }
   });
+}
+
+async function geocodeUncached(key) {
+  if (geoCache[key]) return geoCache[key];
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(key)}&format=json&limit=1&countrycodes=fr,es,it,pt,be,nl,lu,de,ch,at,gb,ie,dk,se,no,fi,pl,cz,sk,hu,hr,si,gr&accept-language=fr`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await r.json();
+    if (data && data[0]) {
+      const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      geoCache[key] = coords;
+      saveGeoCache();
+      await new Promise(res => setTimeout(res, 1100)); // Nominatim rate limit
+      return coords;
+    }
+  } catch (e) {}
+  geoCache[key] = null;
+  saveGeoCache();
+  return null;
 }
 
 /* ----- Map rendering ----- */
