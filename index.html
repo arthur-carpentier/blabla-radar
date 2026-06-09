@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Neon Transit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<style>
+  :root {
+    --bg-deep: #0a0014;
+    --bg-mid: #150028;
+    --panel: rgba(20, 4, 45, 0.6);
+    --pink: #ff2bd6;
+    --pink-hot: #ff10a8;
+    --cyan: #00f0ff;
+    --cyan-bright: #4dffff;
+    --purple: #b537f2;
+    --yellow: #ffea00;
+    --green: #00ff88;
+    --red: #ff3860;
+    --ink: #f0e6ff;
+    --ink-dim: #9d8ec4;
+    --ink-faded: #5a4880;
+
+    --font: 'Poppins', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg-deep);
+    color: var(--ink);
+    font-family: var(--font);
+    font-weight: 400;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  body {
+    position: relative;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255, 43, 214, 0.22), transparent 70%),
+      radial-gradient(ellipse 100% 60% at 50% 100%, rgba(0, 240, 255, 0.16), transparent 70%),
+      linear-gradient(180deg, #0a0014 0%, #1a0040 50%, #0a0014 100%);
+    padding: 16px 14px 60px;
+  }
+
+  /* subtle scanlines, no perspective grid */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 240, 255, 0.022) 0px,
+      rgba(0, 240, 255, 0.022) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 1;
+    mix-blend-mode: overlay;
+  }
+
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ----- TOPBAR ----- */
+  .topbar {
+    background: var(--panel);
+    border: 1px solid rgba(255, 43, 214, 0.4);
+    box-shadow: 0 0 24px rgba(255, 43, 214, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 10px 14px;
+    position: relative;
+    border-radius: 2px;
+  }
+  .topbar::before, .topbar::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border: 2px solid var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+  }
+  .topbar::before { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+  .topbar::after  { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+
+  details summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    user-select: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+
+  .summary-label {
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--cyan);
+    text-shadow: 0 0 6px var(--cyan);
+    text-transform: uppercase;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+  .chip {
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--pink);
+    border: 1px solid var(--pink);
+    padding: 3px 9px;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 4px var(--pink);
+    box-shadow: 0 0 8px rgba(255, 43, 214, 0.3);
+    background: rgba(255, 43, 214, 0.08);
+    border-radius: 2px;
+  }
+
+  .toggle-arrow {
+    font-size: 10px;
+    color: var(--cyan);
+    transition: transform 0.3s;
+    margin-left: auto;
+  }
+  details[open] > summary .toggle-arrow { transform: rotate(180deg); }
+
+  .config-body {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(0, 240, 255, 0.3);
+    animation: fadeIn 0.3s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .form-row input {
+    flex: 1;
+    background: rgba(10, 0, 20, 0.7);
+    border: 1px solid var(--pink);
+    color: var(--cyan-bright);
+    font-family: var(--font);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 10px 12px;
+    letter-spacing: 0.05em;
+    outline: none;
+    box-shadow: inset 0 0 8px rgba(255, 43, 214, 0.2);
+    text-shadow: 0 0 4px var(--cyan);
+    min-width: 0;
+    border-radius: 2px;
+  }
+  .form-row input:focus { border-color: var(--cyan); }
+
+  .btn {
+    background: linear-gradient(135deg, var(--pink-hot), var(--purple));
+    color: #fff;
+    border: 1px solid var(--pink);
+    padding: 9px 16px;
+    font-family: var(--font);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 0 12px rgba(255, 43, 214, 0.5);
+    transition: all 0.15s;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+    border-radius: 2px;
+  }
+  .btn:hover { box-shadow: 0 0 22px var(--pink); transform: translateY(-1px); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: wait; }
+  .btn.alt {
+    background: transparent;
+    color: var(--cyan);
+    border-color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+    text-shadow: 0 0 4px var(--cyan);
+  }
+  .btn.alt:hover { box-shadow: 0 0 22px var(--cyan); }
+
+  .editable-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .editable-chips .chip { display: inline-flex; align-items: center; gap: 4px; padding-right: 4px; }
+  .chip-remove {
+    background: none;
+    border: none;
+    color: var(--pink);
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 4px;
+    text-shadow: 0 0 4px var(--pink);
+  }
+  .chip-remove:hover { color: var(--red); text-shadow: 0 0 6px var(--red); }
+
+  .status {
+    margin-top: 14px;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--ink-dim);
+    letter-spacing: 0.12em;
+    text-align: center;
+  }
+  .status .ok { color: var(--cyan); text-shadow: 0 0 6px var(--cyan); }
+  .status .warn { color: var(--yellow); text-shadow: 0 0 6px var(--yellow); }
+
+  /* ----- JOURNEY ----- */
+  .journey {
+    margin-top: 22px;
+    animation: slideIn 0.5s ease-out;
+    background: var(--panel);
+    border: 1px solid rgba(255, 43, 214, 0.4);
+    box-shadow:
+      0 0 30px rgba(255, 43, 214, 0.15),
+      inset 0 0 40px rgba(0, 240, 255, 0.04);
+    padding: 22px 18px;
+    position: relative;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 2px;
+  }
+  .journey::before, .journey::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 2px solid var(--cyan);
+    box-shadow: 0 0 10px var(--cyan);
+  }
+  .journey::before { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+  .journey::after  { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .journey-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    padding-bottom: 16px;
+    margin-bottom: 6px;
+    border-bottom: 1px dashed rgba(0, 240, 255, 0.3);
+    flex-wrap: wrap;
+  }
+  .line-no {
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    color: var(--cyan);
+    text-shadow: 0 0 8px var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .route {
+    font-weight: 700;
+    font-size: 19px;
+    line-height: 1.25;
+    color: var(--ink);
+    text-shadow: 0 0 10px rgba(240, 230, 255, 0.4);
+    letter-spacing: -0.01em;
+  }
+  .route .arrow {
+    color: var(--pink);
+    margin: 0 8px;
+    text-shadow: 0 0 12px var(--pink);
+    display: inline-block;
+    animation: arrowPulse 2s ease-in-out infinite;
+  }
+  @keyframes arrowPulse {
+    0%, 100% { text-shadow: 0 0 12px var(--pink); }
+    50% { text-shadow: 0 0 24px var(--pink), 0 0 40px var(--pink); }
+  }
+
+  .progress-count {
+    font-weight: 500;
+    font-size: 9px;
+    color: var(--pink);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-align: right;
+    text-shadow: 0 0 6px var(--pink);
+  }
+  .progress-count strong {
+    display: block;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--yellow);
+    letter-spacing: 0;
+    text-shadow: 0 0 8px var(--yellow), 0 0 20px rgba(255, 234, 0, 0.5);
+  }
+
+  /* ----- TRIP PROGRESS BAR ----- */
+  .trip-progress {
+    margin: 16px 0 8px;
+    padding: 12px 14px;
+    background: rgba(10, 0, 20, 0.5);
+    border: 1px solid rgba(255, 43, 214, 0.2);
+    border-radius: 2px;
+  }
+  .trip-progress-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ink-dim);
+    flex-wrap: wrap;
+  }
+  .trip-progress-label .target {
+    color: var(--cyan);
+    text-shadow: 0 0 6px var(--cyan);
+    font-weight: 500;
+  }
+  .trip-progress-label .eta {
+    color: var(--yellow);
+    font-weight: 600;
+    text-shadow: 0 0 6px rgba(255, 234, 0, 0.5);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+  }
+  .progress-bar {
+    height: 6px;
+    background: rgba(255, 43, 214, 0.08);
+    border: 1px solid rgba(255, 43, 214, 0.3);
+    position: relative;
+    overflow: visible;
+    border-radius: 1px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green), var(--cyan), var(--pink));
+    box-shadow:
+      0 0 8px var(--pink),
+      0 0 16px rgba(255, 43, 214, 0.6);
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    right: -2px; top: -3px;
+    width: 4px; height: calc(100% + 6px);
+    background: #fff;
+    box-shadow: 0 0 8px #fff, 0 0 18px var(--cyan), 0 0 30px var(--pink);
+    border-radius: 1px;
+  }
+  .progress-pct {
+    margin-top: 6px;
+    font-weight: 600;
+    font-size: 10px;
+    color: var(--pink);
+    text-shadow: 0 0 4px var(--pink);
+    letter-spacing: 0.1em;
+  }
+
+  /* ----- TIMELINE ----- */
+  .timeline-wrap { margin-top: 14px; }
+
+  .past-toggle {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--green);
+    text-shadow: 0 0 6px var(--green);
+  }
+  .past-toggle::-webkit-details-marker { display: none; }
+  .past-toggle .caret {
+    font-size: 10px;
+    transition: transform 0.3s;
+  }
+  details.past[open] > .past-toggle .caret { transform: rotate(90deg); }
+  .past-toggle .count {
+    color: var(--ink-dim);
+    text-shadow: none;
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
+  .timeline {
+    position: relative;
+    padding-left: 30px;
+    margin-top: 10px;
+  }
+  .timeline.upcoming { margin-top: 6px; }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: linear-gradient(180deg, var(--green), var(--pink), var(--ink-faded));
+    box-shadow: 0 0 6px rgba(255, 43, 214, 0.4);
+  }
+  .timeline.past-only::before {
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(0, 255, 136, 0.4);
+  }
+
+  .section-label {
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--pink);
+    text-shadow: 0 0 8px var(--pink);
+    margin: 16px 0 10px;
+  }
+
+  .stop {
+    position: relative;
+    padding: 12px 0 14px;
+    border-bottom: 1px dotted rgba(157, 142, 196, 0.15);
+  }
+  .stop:last-child { border-bottom: none; }
+  .stop::before {
+    content: '';
+    position: absolute;
+    left: -30px;
+    top: 16px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bg-deep);
+    border: 2px solid var(--ink-faded);
+    transition: all 0.3s;
+  }
+  .stop.past::before {
+    background: var(--green);
+    border-color: var(--green);
+    box-shadow: 0 0 10px var(--green), 0 0 22px rgba(0, 255, 136, 0.5);
+  }
+  .stop.next::before {
+    background: var(--pink);
+    border-color: #fff;
+    box-shadow: 0 0 0 4px rgba(255, 43, 214, 0.3), 0 0 20px var(--pink), 0 0 40px var(--pink);
+    animation: nextPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes nextPulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(255, 43, 214, 0.3), 0 0 20px var(--pink), 0 0 40px var(--pink); }
+    50% { box-shadow: 0 0 0 8px rgba(255, 43, 214, 0.15), 0 0 30px var(--pink), 0 0 60px var(--pink); }
+  }
+  .stop.future::before { border-color: var(--ink-faded); background: var(--bg-mid); }
+
+  .stop-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink);
+    margin-bottom: 5px;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  .stop.past .stop-name { color: var(--ink-dim); font-weight: 500; }
+  .stop.next .stop-name {
+    color: #fff;
+    text-shadow: 0 0 12px var(--pink), 0 0 24px rgba(255, 43, 214, 0.4);
+  }
+
+  .stop-code {
+    font-weight: 500;
+    font-size: 9px;
+    color: var(--ink-faded);
+    letter-spacing: 0.15em;
+    margin-left: 6px;
+    padding: 1px 5px;
+    border: 1px solid var(--ink-faded);
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+
+  .times {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    font-weight: 500;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .time-row { display: flex; align-items: baseline; gap: 6px; }
+  .time-row .label {
+    color: var(--ink-faded);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .time-row .aimed { color: var(--ink-faded); text-decoration: line-through; }
+  .time-row .actual {
+    color: var(--cyan-bright);
+    font-weight: 600;
+    text-shadow: 0 0 6px var(--cyan);
+  }
+  .time-row .delta {
+    font-size: 9px;
+    padding: 2px 6px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    border-radius: 2px;
+  }
+  .delta.ok    { color: var(--green); border: 1px solid var(--green); text-shadow: 0 0 4px var(--green); box-shadow: 0 0 6px rgba(0,255,136,0.3); }
+  .delta.late  { color: var(--red);   border: 1px solid var(--red);   text-shadow: 0 0 4px var(--red);   box-shadow: 0 0 6px rgba(255,56,96,0.3); }
+  .delta.early { color: var(--cyan);  border: 1px solid var(--cyan);  text-shadow: 0 0 4px var(--cyan);  box-shadow: 0 0 6px rgba(0,240,255,0.3); }
+
+  .status-pill {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    margin-left: 6px;
+    vertical-align: middle;
+    border: 1px solid;
+    border-radius: 2px;
+  }
+  .pill-ontime   { color: var(--green);  border-color: var(--green);  text-shadow: 0 0 4px var(--green);  box-shadow: 0 0 6px rgba(0,255,136,0.3); }
+  .pill-delayed  { color: var(--red);    border-color: var(--red);    text-shadow: 0 0 4px var(--red);    box-shadow: 0 0 6px rgba(255,56,96,0.3); }
+  .pill-departed { color: var(--ink-dim);border-color: var(--ink-faded); }
+  .pill-arrived  { color: var(--cyan);   border-color: var(--cyan);   text-shadow: 0 0 4px var(--cyan);   box-shadow: 0 0 6px rgba(0,240,255,0.3); }
+  .pill-noreport { color: var(--ink-faded); border-color: var(--ink-faded); }
+
+  /* ----- MAP ----- */
+  .map-toggle-wrap {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(0, 240, 255, 0.2);
+    display: flex;
+    gap: 8px;
+  }
+  .map-container {
+    margin-top: 14px;
+    height: 320px;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.2), inset 0 0 30px rgba(255, 43, 214, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    background: #0a0014;
+    position: relative;
+    animation: fadeIn 0.3s ease-out;
+  }
+  .map-container .leaflet-container {
+    background: #0a0014;
+    font-family: var(--font);
+    font-weight: 500;
+  }
+  .map-container .leaflet-control-attribution {
+    background: rgba(10, 0, 20, 0.7);
+    color: var(--ink-faded);
+    font-size: 9px;
+  }
+  .map-container .leaflet-control-attribution a { color: var(--ink-dim); }
+  .map-container .leaflet-bar {
+    border: 1px solid var(--pink);
+    box-shadow: 0 0 8px rgba(255, 43, 214, 0.5);
+  }
+  .map-container .leaflet-bar a {
+    background: rgba(10, 0, 20, 0.85);
+    color: var(--cyan);
+    border-bottom: 1px solid rgba(255, 43, 214, 0.3);
+  }
+  .map-container .leaflet-bar a:hover {
+    background: rgba(255, 43, 214, 0.2);
+    color: #fff;
+  }
+  .map-loading {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 0, 20, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cyan);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    z-index: 1000;
+    pointer-events: none;
+  }
+  .map-marker {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+  .map-marker.past { background: var(--green); border-color: var(--green); box-shadow: 0 0 10px var(--green); }
+  .map-marker.next { background: var(--pink); border-color: #fff; box-shadow: 0 0 14px var(--pink), 0 0 28px var(--pink); animation: nextPulse 1.4s infinite; }
+  .map-marker.future { background: var(--bg-mid); border-color: var(--ink-faded); }
+  .map-bus {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--yellow);
+    border: 2px solid #fff;
+    box-shadow: 0 0 14px var(--yellow), 0 0 28px var(--yellow);
+  }
+  /* Custom "center on me" control */
+  .leaflet-control-recenter {
+    background: rgba(10, 0, 20, 0.85);
+    border: 1px solid var(--cyan);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+    color: var(--cyan);
+    width: 32px; height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-shadow: 0 0 6px var(--cyan);
+    user-select: none;
+  }
+  .leaflet-control-recenter:hover {
+    background: rgba(0, 240, 255, 0.18);
+    box-shadow: 0 0 18px var(--cyan);
+  }
+  .map-user {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 3px solid #fff;
+    box-shadow: 0 0 14px var(--cyan), 0 0 30px var(--cyan), 0 0 50px var(--cyan-bright);
+    animation: userPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes userPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 14px var(--cyan), 0 0 30px var(--cyan); }
+    50% { transform: scale(1.15); box-shadow: 0 0 20px var(--cyan), 0 0 45px var(--cyan), 0 0 70px var(--cyan-bright); }
+  }
+  .map-user-proj {
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border: 2px solid var(--cyan);
+    transform: rotate(45deg);
+    box-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan);
+  }
+
+  /* GPS button + state */
+  .btn.gps {
+    position: relative;
+  }
+  .btn.gps.active {
+    background: transparent;
+    color: var(--cyan);
+    border-color: var(--cyan);
+    box-shadow: 0 0 14px var(--cyan), inset 0 0 8px rgba(0, 240, 255, 0.2);
+    text-shadow: 0 0 4px var(--cyan);
+  }
+  .btn.gps.active::before {
+    content: '';
+    position: absolute;
+    left: 8px; top: 50%;
+    transform: translateY(-50%);
+    width: 6px; height: 6px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--cyan);
+    animation: gpsBlink 1.2s infinite;
+  }
+  @keyframes gpsBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .btn.gps.active { padding-left: 22px; }
+
+  .gps-tag {
+    display: inline-block;
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    padding: 1px 6px;
+    margin-left: 8px;
+    letter-spacing: 0.15em;
+    border-radius: 2px;
+    text-shadow: 0 0 4px var(--cyan);
+    box-shadow: 0 0 6px rgba(0, 240, 255, 0.3);
+    vertical-align: middle;
+  }
+  .gps-dist {
+    color: var(--cyan);
+    font-weight: 600;
+    text-shadow: 0 0 4px var(--cyan);
+  }
+
+  /* GPS reasoning logs panel */
+  .gps-logs {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(10, 0, 20, 0.55);
+    border-left: 2px solid var(--cyan);
+    border-right: 1px solid rgba(0, 240, 255, 0.15);
+    border-top: 1px solid rgba(0, 240, 255, 0.15);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+    box-shadow: inset 2px 0 12px rgba(0, 240, 255, 0.12);
+    font-family: ui-monospace, 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    letter-spacing: 0.02em;
+    line-height: 1.55;
+    display: none;
+    border-radius: 0 2px 2px 0;
+  }
+  .gps-logs.active { display: block; animation: fadeIn 0.3s; }
+  .gps-log-head {
+    color: var(--yellow);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-size: 9px;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+    border-bottom: 1px dashed rgba(0, 240, 255, 0.2);
+    text-shadow: 0 0 6px rgba(255, 234, 0, 0.4);
+    display: flex;
+    justify-content: space-between;
+  }
+  .gps-log-head .ts {
+    color: var(--cyan);
+    text-shadow: 0 0 4px var(--cyan);
+    font-weight: 500;
+  }
+  .gps-log-line {
+    padding: 1px 0;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .gps-log-line .prompt {
+    color: var(--pink);
+    text-shadow: 0 0 4px var(--pink);
+    font-weight: 700;
+    flex-shrink: 0;
+    width: 10px;
+  }
+  .gps-log-line .key {
+    color: var(--ink-dim);
+    flex-shrink: 0;
+    min-width: 95px;
+  }
+  .gps-log-line .val {
+    color: var(--ink);
+    word-break: break-word;
+  }
+  .gps-log-line .val .acc-cyan { color: var(--cyan); text-shadow: 0 0 4px var(--cyan); font-weight: 600; }
+  .gps-log-line .val .acc-pink { color: var(--pink); text-shadow: 0 0 4px var(--pink); font-weight: 600; }
+  .gps-log-line .val .acc-green { color: var(--green); text-shadow: 0 0 4px var(--green); font-weight: 600; }
+  .gps-log-line .val .acc-yellow { color: var(--yellow); text-shadow: 0 0 4px var(--yellow); font-weight: 600; }
+  .gps-log-line .val .acc-warn { color: var(--red); text-shadow: 0 0 4px var(--red); font-weight: 600; }
+
+  /* ----- MESSAGE ----- */
+  .message {
+    margin-top: 22px;
+    padding: 24px 18px;
+    background: var(--panel);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 13px;
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.1);
+    border-radius: 2px;
+  }
+  .message.error { border-color: var(--red); color: var(--red); box-shadow: 0 0 16px rgba(255, 56, 96, 0.2); }
+  .message strong { color: var(--cyan); text-shadow: 0 0 6px var(--cyan); }
+  .message .code { color: var(--pink); text-shadow: 0 0 6px var(--pink); font-family: ui-monospace, monospace; }
+
+  .loader {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--ink-faded);
+    border-top-color: var(--pink);
+    border-right-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+    box-shadow: 0 0 10px rgba(255, 43, 214, 0.5);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px dashed rgba(0, 240, 255, 0.2);
+    font-weight: 500;
+    font-size: 10px;
+    color: var(--ink-faded);
+    letter-spacing: 0.2em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  footer a { color: var(--pink); text-decoration: none; text-shadow: 0 0 6px rgba(255, 43, 214, 0.5); }
+  footer a:hover { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+
+  @media (max-width: 480px) {
+    .journey { padding: 18px 14px; }
+    .timeline { padding-left: 26px; }
+    .stop::before { left: -26px; }
+    .timeline::before { left: 5px; }
+    .progress-count { text-align: left; }
+    .progress-count strong { display: inline; font-size: 22px; margin-right: 8px; }
+    .route { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <details class="topbar" id="config">
+    <summary>
+      <span class="summary-label">▣ Suivi</span>
+      <span class="chips" id="chipsDisplay"></span>
+      <button class="btn gps" id="gpsBtn">📍 GPS</button>
+      <span class="toggle-arrow">▼</span>
+    </summary>
+    <div class="config-body">
+      <div class="editable-chips" id="chipsEdit"></div>
+      <div class="form-row">
+        <input id="busInput" type="text" placeholder="Ajouter un n° de ligne…" autocomplete="off" inputmode="numeric" />
+        <button class="btn" id="addBtn">Ajouter</button>
+      </div>
+      <button class="btn alt" id="refreshBtn">↻ Rafraîchir</button>
+    </div>
+  </details>
+
+  <div class="status" id="status">// SYSTÈME PRÊT //</div>
+
+  <main id="result"></main>
+
+  <footer>
+    Source · <a href="https://open-data.bus.blablacar.com/api/siri-lite/estimated-timetable" target="_blank" rel="noopener">open-data.bus.blablacar.com</a>
+  </footer>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+const API = 'https://open-data.bus.blablacar.com/api/siri-lite/estimated-timetable';
+const PROXIES = [
+  u => u,
+  u => 'https://corsproxy.io/?' + encodeURIComponent(u),
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u)
+];
+
+const STORAGE_KEY = 'neon-transit-buses';
+const GEO_KEY = 'neon-transit-geo-v3';
+const DEFAULTS = ['50050', '87715'];
+
+const $ = (id) => document.getElementById(id);
+const result = $('result');
+const statusEl = $('status');
+const input = $('busInput');
+const addBtn = $('addBtn');
+const refreshBtn = $('refreshBtn');
+const chipsDisplay = $('chipsDisplay');
+const chipsEdit = $('chipsEdit');
+const gpsBtn = $('gpsBtn');
+
+let buses = loadBuses();
+let lastData = null;
+let geoCache = loadGeoCache();
+let geoQueue = Promise.resolve();
+const journeyMaps = new Map(); // journey id -> { map, opened }
+
+/* ----- GPS state ----- */
+let userPos = null;
+let userWatchId = null;
+let gpsEnabled = false;
+
+function loadBuses() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a; }
+  } catch (e) {}
+  return [...DEFAULTS];
+}
+function saveBuses() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(buses)); } catch (e) {}
+}
+function loadGeoCache() {
+  try { return JSON.parse(localStorage.getItem(GEO_KEY) || '{}'); } catch (e) { return {}; }
+}
+function saveGeoCache() {
+  try { localStorage.setItem(GEO_KEY, JSON.stringify(geoCache)); } catch (e) {}
+}
+
+const fmtTime = iso => {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+};
+const diffMin = (a, b) => {
+  if (!a || !b) return null;
+  return Math.round((new Date(b) - new Date(a)) / 60000);
+};
+const escapeHtml = s => String(s ?? '')
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+function deltaBadge(aimed, actual) {
+  const d = diffMin(aimed, actual);
+  if (d === null) return '';
+  if (d === 0) return `<span class="delta ok">à l'heure</span>`;
+  if (d > 0)  return `<span class="delta late">+${d} min</span>`;
+  return `<span class="delta early">${d} min</span>`;
+}
+
+function statusPill(s) {
+  if (!s) return '';
+  const map = {
+    'ON_TIME':   ['pill-ontime',   'À l\'heure'],
+    'DELAYED':   ['pill-delayed',  'Retard'],
+    'DEPARTED':  ['pill-departed', 'Parti'],
+    'ARRIVED':   ['pill-arrived',  'Arrivé'],
+    'NO_REPORT': ['pill-noreport', 'Sans info'],
+    'CANCELLED': ['pill-delayed',  'Annulé']
+  };
+  const [cls, label] = map[s] || ['pill-noreport', s];
+  return `<span class="status-pill ${cls}">${label}</span>`;
+}
+
+function renderTimes(call) {
+  const aimedArr = call.aimedArrivalTime;
+  const actArr   = call.actualArrivalTime || call.expectedArrivalTime;
+  const aimedDep = call.aimedDepartureTime;
+  const actDep   = call.actualDepartureTime || call.expectedDepartureTime;
+
+  let html = '<div class="times">';
+  if (aimedArr || actArr) {
+    html += '<div class="time-row"><span class="label">Arr.</span>';
+    if (aimedArr && actArr && aimedArr !== actArr) {
+      html += `<span class="aimed">${fmtTime(aimedArr)}</span><span class="actual">${fmtTime(actArr)}</span>${deltaBadge(aimedArr, actArr)}`;
+    } else {
+      html += `<span class="actual">${fmtTime(aimedArr || actArr)}</span>`;
+    }
+    html += '</div>';
+  }
+  if (aimedDep || actDep) {
+    html += '<div class="time-row"><span class="label">Dép.</span>';
+    if (aimedDep && actDep && aimedDep !== actDep) {
+      html += `<span class="aimed">${fmtTime(aimedDep)}</span><span class="actual">${fmtTime(actDep)}</span>${deltaBadge(aimedDep, actDep)}`;
+    } else {
+      html += `<span class="actual">${fmtTime(aimedDep || actDep)}</span>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderStop(call, kind) {
+  const name = call.stopPointName?.[0]?.value ?? '—';
+  const code = call.stopPointRef?.value ?? '';
+  const arrStatus = call.arrivalStatus;
+  const depStatus = call.departureStatus;
+  const displayedStatus = (kind === 'past') ? (depStatus || arrStatus) : (arrStatus || depStatus);
+
+  return `
+    <div class="stop ${kind}">
+      <div class="stop-name">
+        ${escapeHtml(name)}
+        ${code ? `<span class="stop-code">${escapeHtml(code)}</span>` : ''}
+        ${statusPill(displayedStatus)}
+      </div>
+      ${renderTimes(call)}
+    </div>`;
+}
+
+/* ----- Trip progress calculation ----- */
+function calcTripProgress(recorded, estimated) {
+  if (!recorded.length || !estimated.length) return null;
+  const last = recorded[recorded.length - 1];
+  const next = estimated[0];
+  const startStr = last.actualDepartureTime || last.aimedDepartureTime || last.actualArrivalTime || last.aimedArrivalTime;
+  const endStr   = next.expectedArrivalTime || next.aimedArrivalTime;
+  if (!startStr || !endStr) return null;
+
+  const start = new Date(startStr).getTime();
+  const end   = new Date(endStr).getTime();
+  if (end <= start) return null;
+  const now = Date.now();
+  const pct = Math.max(0, Math.min(100, ((now - start) / (end - start)) * 100));
+  const minutesRemaining = Math.max(0, Math.round((end - now) / 60000));
+
+  return {
+    pct,
+    minutesRemaining,
+    targetName: next.stopPointName?.[0]?.value ?? '?',
+    targetEta: fmtTime(endStr),
+    fromName: last.stopPointName?.[0]?.value ?? ''
+  };
+}
+
+function renderProgressBar(p, gps) {
+  if (!p) return '';
+  const usingGps = !!gps;
+  const pct = usingGps ? gps.pct : p.pct;
+  const arrivedSoon = p.minutesRemaining <= 1;
+  const gpsExtra = usingGps
+    ? `<span class="gps-dist">${formatKm(gps.distToEnd)}</span>${gps.distOff > 2000 ? ` <span style="color:var(--yellow);font-size:10px">⚠ ${formatKm(gps.distOff)} hors trajet</span>` : ''}`
+    : '';
+  return `
+    <div class="trip-progress${usingGps ? ' gps' : ''}">
+      <div class="trip-progress-label">
+        <span>En route vers <span class="target">${escapeHtml(p.targetName)}</span>${usingGps ? '<span class="gps-tag">GPS</span>' : ''}</span>
+        <span class="eta">${p.targetEta}${arrivedSoon ? '' : ` · dans ${p.minutesRemaining} min`} ${gpsExtra}</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width: ${pct.toFixed(1)}%"></div></div>
+      <div class="progress-pct">${pct.toFixed(0)}% parcouru${usingGps ? ' (position réelle)' : ''}</div>
+    </div>`;
+}
+
+function renderJourney(journey, idx) {
+  const recorded = (journey.recordedCalls?.recordedCall ?? []).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  const estimated = (journey.estimatedCalls?.estimatedCall ?? []).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  const lineName = journey.publishedLineName?.[0]?.value ?? journey.lineRef?.value ?? '?';
+
+  const all = [...recorded, ...estimated];
+  const origin = all[0]?.stopPointName?.[0]?.value ?? '?';
+  const dest   = all[all.length-1]?.stopPointName?.[0]?.value ?? '?';
+
+  const progress = calcTripProgress(recorded, estimated);
+  const journeyId = `journey-${idx}-${lineName}`;
+
+  let html = `
+    <section class="journey" data-id="${journeyId}">
+      <div class="journey-head">
+        <div>
+          <div class="line-no">// LIGNE ${escapeHtml(lineName)}</div>
+          <div class="route">${escapeHtml(origin)} <span class="arrow">▶</span> ${escapeHtml(dest)}</div>
+        </div>
+        <div class="progress-count"><strong>${recorded.length}/${all.length}</strong>arrêts effectués</div>
+      </div>
+
+      ${renderProgressBar(progress)}
+
+      <div class="gps-logs" data-logs-for="${journeyId}"></div>
+
+      <div class="timeline-wrap">`;
+
+  if (recorded.length) {
+    html += `
+      <details class="past">
+        <summary class="past-toggle">
+          <span class="caret">▶</span>
+          Arrêts passés <span class="count">(${recorded.length})</span>
+        </summary>
+        <div class="timeline past-only">
+          ${recorded.map(c => renderStop(c, 'past')).join('')}
+        </div>
+      </details>`;
+  }
+
+  if (estimated.length) {
+    html += `
+      <div class="section-label">▶ Prochains arrêts</div>
+      <div class="timeline upcoming">
+        ${estimated.map((c, i) => renderStop(c, i === 0 ? 'next' : 'future')).join('')}
+      </div>`;
+  }
+
+  if (!recorded.length && !estimated.length) {
+    html += `<div class="message">Aucun arrêt disponible.</div>`;
+  }
+
+  html += `
+      </div>
+      <div class="map-toggle-wrap">
+        <button class="btn alt map-btn" data-journey="${journeyId}">📍 Afficher la carte</button>
+      </div>
+    </section>`;
+  return { html, journey, journeyId, progress };
+}
+
+/* ----- Geometric projection of GPS onto current leg ----- */
+function projectOnSegment(P, A, B) {
+  // P, A, B are [lat, lon]
+  // Equirectangular projection centered on segment midpoint
+  const refLat = (A[0] + B[0]) / 2;
+  const cosRef = Math.cos(refLat * Math.PI / 180);
+  const M = 111320; // meters per degree (roughly)
+  const ax = A[1] * cosRef * M, ay = A[0] * M;
+  const bx = B[1] * cosRef * M, by = B[0] * M;
+  const px = P[1] * cosRef * M, py = P[0] * M;
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx*dx + dy*dy;
+  if (!len2) return { t: 0, point: A.slice(), distOff: 0, distToEnd: 0 };
+  let tRaw = ((px - ax) * dx + (py - ay) * dy) / len2;
+  const t = Math.max(0, Math.min(1, tRaw));
+  const projX = ax + t * dx, projY = ay + t * dy;
+  const distOff = Math.hypot(px - projX, py - projY); // perpendicular distance to line
+  const segLen = Math.sqrt(len2);
+  const distToEnd = (1 - t) * segLen;
+  const point = [A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1])];
+  return { t, tRaw, point, distOff, distToEnd, segLen };
+}
+
+function formatKm(m) {
+  if (m == null) return '';
+  if (m < 1000) return Math.round(m) + ' m';
+  return (m / 1000).toFixed(m < 10000 ? 1 : 0) + ' km';
+}
+
+/* ----- Ensure current leg stops are geocoded for projection ----- */
+async function ensureLegCoords(journeyData) {
+  if (journeyData.legCoords !== undefined) return journeyData.legCoords;
+  const j = journeyData.journey;
+  const recorded = (j.recordedCalls?.recordedCall ?? []).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  const estimated = (j.estimatedCalls?.estimatedCall ?? []).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  if (!recorded.length || !estimated.length) {
+    journeyData.legCoords = null;
+    return null;
+  }
+  const aName = recorded[recorded.length-1].stopPointName?.[0]?.value ?? '';
+  const bName = estimated[0].stopPointName?.[0]?.value ?? '';
+  const a = await geocode(aName);
+  const b = await geocode(bName);
+  if (!a || !b) {
+    journeyData.legCoords = null;
+    return null;
+  }
+  journeyData.legCoords = { a, b, aName, bName };
+  return journeyData.legCoords;
+}
+
+/* ----- Fetch with proxy fallback ----- */
+async function fetchData() {
+  let lastErr;
+  for (let i = 0; i < PROXIES.length; i++) {
+    const url = PROXIES[i](API);
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
+      const data = await res.json();
+      return { data, proxyUsed: i };
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr || new Error('Toutes les sources ont échoué');
+}
+
+/* ----- Geocoding via Nominatim (with cache + rate limit) ----- */
+function cityFromStopName(name) {
+  if (!name) return '';
+  // Take part before " - " separator: "Toulouse - Matabiau Bus Station" -> "Toulouse"
+  let s = name.split(' - ')[0].trim();
+  // Strip common French bus/train station suffixes (preserves hyphenated names like "Brive-la-Gaillarde")
+  const suffixes = /\s+(Sud|Nord|Est|Ouest|Centre|Centre[- ]Ville|Gare\s+SNCF|Gare\s+TGV|Gare\s+Routière|Gare|Bus\s+Station|Station|Routière|SNCF|TGV|Aéroport|Airport)$/i;
+  while (suffixes.test(s)) {
+    s = s.replace(suffixes, '').trim();
+  }
+  return s;
+}
+
+async function geocode(stopName) {
+  const key = cityFromStopName(stopName);
+  if (!key) return null;
+  if (geoCache[key]) return geoCache[key];
+  return geoQueue = geoQueue.then(async () => {
+    if (geoCache[key]) return geoCache[key];
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(key)}&format=json&limit=1&countrycodes=fr,es,it,pt,be,nl,lu,de,ch,at,gb,ie,dk,se,no,fi,pl,cz,sk,hu,hr,si,gr&accept-language=fr`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await r.json();
+      if (data && data[0]) {
+        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        geoCache[key] = coords;
+        saveGeoCache();
+        await new Promise(res => setTimeout(res, 1100)); // Nominatim rate limit
+        return coords;
+      }
+    } catch (e) {}
+    geoCache[key] = null;
+    saveGeoCache();
+    return null;
+  });
+}
+
+/* ----- Map rendering ----- */
+async function toggleMap(btn) {
+  const journeyId = btn.dataset.journey;
+  const section = btn.closest('.journey');
+  let mapState = journeyMaps.get(journeyId);
+
+  if (mapState?.opened) {
+    // hide
+    mapState.container.style.display = 'none';
+    mapState.opened = false;
+    btn.textContent = '📍 Afficher la carte';
+    return;
+  }
+
+  if (!mapState) {
+    // create container
+    const container = document.createElement('div');
+    container.className = 'map-container';
+    container.innerHTML = '<div class="map-loading">// Géolocalisation des arrêts…</div>';
+    section.appendChild(container);
+    mapState = { container, opened: true, map: null };
+    journeyMaps.set(journeyId, mapState);
+  } else {
+    mapState.container.style.display = 'block';
+    mapState.opened = true;
+  }
+  btn.textContent = '📍 Masquer la carte';
+
+  // find journey data
+  const journeyData = lastData?.journeys?.find(j => j.journeyId === journeyId);
+  if (!journeyData) return;
+
+  if (mapState.map) {
+    // already rendered, just resize
+    setTimeout(() => mapState.map.invalidateSize(), 50);
+    updateMapUserMarkers(journeyData);
+    return;
+  }
+
+  // collect stops in order
+  const j = journeyData.journey;
+  const recorded = (j.recordedCalls?.recordedCall ?? []).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  const estimated = (j.estimatedCalls?.estimatedCall ?? []).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  const stops = [
+    ...recorded.map(c => ({ call: c, kind: 'past' })),
+    ...estimated.map((c, i) => ({ call: c, kind: i === 0 ? 'next' : 'future' }))
+  ];
+
+  // geocode all
+  const coords = [];
+  for (const s of stops) {
+    const name = s.call.stopPointName?.[0]?.value ?? '';
+    const c = await geocode(name);
+    coords.push({ ...s, name, coords: c });
+  }
+
+  // init map
+  const loader = mapState.container.querySelector('.map-loading');
+  if (loader) loader.remove();
+
+  const valid = coords.filter(c => c.coords);
+  if (!valid.length) {
+    mapState.container.innerHTML = '<div class="map-loading" style="position:static;height:100%">Aucune coordonnée trouvée</div>';
+    return;
+  }
+
+  const map = L.map(mapState.container, {
+    zoomControl: true,
+    attributionControl: true
+  }).setView(valid[0].coords, 6);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CartoDB',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  // markers
+  valid.forEach(s => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="map-marker ${s.kind}"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+    L.marker(s.coords, { icon })
+      .bindPopup(`<b>${escapeHtml(s.name)}</b>`)
+      .addTo(map);
+  });
+
+  // polyline: past in green, future in pink
+  const allCoords = valid.map(s => s.coords);
+  const lastPastIdx = valid.map((s,i)=>({...s,i})).filter(s=>s.kind==='past').map(s=>s.i).pop();
+  const nextIdx = valid.findIndex(s => s.kind === 'next');
+
+  // compute bus interpolated position if progress data available
+  const progress = journeyData.progress;
+  let busCoord = null;
+  if (progress && lastPastIdx !== undefined && nextIdx >= 0 && valid[lastPastIdx] && valid[nextIdx]) {
+    const a = valid[lastPastIdx].coords;
+    const b = valid[nextIdx].coords;
+    const p = progress.pct / 100;
+    busCoord = [a[0] + (b[0]-a[0])*p, a[1] + (b[1]-a[1])*p];
+  }
+
+  // past polyline
+  if (lastPastIdx !== undefined && lastPastIdx >= 0) {
+    const pastPath = allCoords.slice(0, lastPastIdx + 1);
+    if (busCoord) pastPath.push(busCoord);
+    L.polyline(pastPath, { color: '#00ff88', weight: 3, opacity: 0.9 }).addTo(map);
+  }
+
+  // future polyline
+  const futureStartIdx = lastPastIdx !== undefined ? lastPastIdx : -1;
+  const futurePath = busCoord
+    ? [busCoord, ...allCoords.slice(futureStartIdx + 1)]
+    : allCoords.slice(futureStartIdx + 1);
+  if (futurePath.length >= 2) {
+    L.polyline(futurePath, { color: '#ff2bd6', weight: 3, opacity: 0.7, dashArray: '6, 6' }).addTo(map);
+  }
+
+  // bus marker
+  if (busCoord) {
+    const busIcon = L.divIcon({
+      className: '',
+      html: '<div class="map-bus"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+    L.marker(busCoord, { icon: busIcon, zIndexOffset: 1000 })
+      .bindPopup('<b>🚌 Position estimée</b>')
+      .addTo(map);
+  }
+
+  // fit bounds
+  map.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+
+  mapState.map = map;
+  mapState.routeCoords = allCoords;
+
+  // If GPS is active, add user markers
+  updateMapUserMarkers(journeyData);
+}
+
+/* ----- GPS: start/stop, projection, update UI ----- */
+function startGPS() {
+  if (!navigator.geolocation) {
+    alert('La géolocalisation n\'est pas disponible sur votre navigateur.');
+    return;
+  }
+  if (userWatchId !== null) return;
+  gpsBtn.disabled = true;
+  gpsBtn.textContent = '📍 …';
+
+  userWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      userPos = [pos.coords.latitude, pos.coords.longitude];
+      gpsEnabled = true;
+      gpsBtn.disabled = false;
+      gpsBtn.classList.add('active');
+      gpsBtn.textContent = '📍 GPS on';
+      onUserPositionUpdate();
+    },
+    err => {
+      gpsBtn.disabled = false;
+      gpsBtn.classList.remove('active');
+      gpsBtn.textContent = '📍 GPS';
+      userWatchId = null;
+      gpsEnabled = false;
+      userPos = null;
+      const msg = err.code === 1 ? 'Permission refusée'
+                : err.code === 2 ? 'Position indisponible'
+                : err.code === 3 ? 'Timeout'
+                : 'Erreur GPS';
+      alert('GPS : ' + msg + (location.protocol === 'file:' ? '\n\nNote: La géolocalisation peut être bloquée sur les fichiers locaux (file://). Servez ce fichier via un serveur HTTP (ex: python3 -m http.server).' : ''));
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
+}
+
+function stopGPS() {
+  if (userWatchId !== null) {
+    navigator.geolocation.clearWatch(userWatchId);
+    userWatchId = null;
+  }
+  gpsEnabled = false;
+  userPos = null;
+  gpsBtn.classList.remove('active');
+  gpsBtn.textContent = '📍 GPS';
+  // re-render progress bars (back to time-based) and clear map user markers
+  onUserPositionUpdate();
+}
+
+function logGps(journeyData, lines) {
+  const section = result.querySelector(`[data-id="${journeyData.journeyId}"]`);
+  if (!section) return;
+  const logsEl = section.querySelector('.gps-logs');
+  if (!logsEl) return;
+
+  if (!gpsEnabled) {
+    logsEl.classList.remove('active');
+    logsEl.innerHTML = '';
+    return;
+  }
+
+  const ts = new Date().toLocaleTimeString('fr-FR');
+  const head = `<div class="gps-log-head"><span>▶ Trace GPS · étape en cours</span><span class="ts">${ts}</span></div>`;
+  const body = lines.map(l =>
+    `<div class="gps-log-line"><span class="prompt">›</span><span class="key">${escapeHtml(l.k)}</span><span class="val">${l.v}</span></div>`
+  ).join('');
+
+  logsEl.classList.add('active');
+  logsEl.innerHTML = head + body;
+}
+
+async function onUserPositionUpdate() {
+  if (!lastData?.journeys) return;
+  for (const journeyData of lastData.journeys) {
+    const logs = [];
+
+    if (gpsEnabled && userPos) {
+      logs.push({ k: 'Position GPS', v: `<span class="acc-cyan">${userPos[0].toFixed(5)}, ${userPos[1].toFixed(5)}</span>` });
+
+      // pre-log "geocoding" if leg not yet cached
+      const legCached = journeyData.legCoords !== undefined;
+      if (!legCached) {
+        logs.push({ k: 'Géocodage', v: `<span class="acc-yellow">en cours…</span>` });
+        logGps(journeyData, logs);
+        logs.pop();
+      }
+
+      const leg = await ensureLegCoords(journeyData);
+      if (leg) {
+        logs.push({ k: 'Étape en cours', v: `<span class="acc-pink">${escapeHtml(leg.aName)}</span> → <span class="acc-pink">${escapeHtml(leg.bName)}</span>` });
+        logs.push({ k: 'Arrêt A (départ)', v: `<span class="acc-green">${leg.a[0].toFixed(4)}, ${leg.a[1].toFixed(4)}</span>` });
+        logs.push({ k: 'Arrêt B (arrivée)', v: `<span class="acc-green">${leg.b[0].toFixed(4)}, ${leg.b[1].toFixed(4)}</span>` });
+
+        const proj = projectOnSegment(userPos, leg.a, leg.b);
+        const pct = (proj.t * 100).toFixed(1);
+        const offWarn = proj.distOff > 2000 ? ' <span class="acc-warn">⚠ hors trajet</span>' : '';
+        logs.push({ k: 'Projection orthogonale', v: `t = <span class="acc-cyan">${proj.t.toFixed(3)}</span> (${pct}% de l'étape)` });
+        logs.push({ k: 'Point projeté', v: `<span class="acc-cyan">${proj.point[0].toFixed(4)}, ${proj.point[1].toFixed(4)}</span>` });
+        logs.push({ k: 'Distance restante', v: `<span class="acc-yellow">${formatKm(proj.distToEnd)}</span>` });
+        logs.push({ k: 'Longueur étape', v: formatKm(proj.segLen) });
+        logs.push({ k: 'Écart au trajet', v: `${formatKm(proj.distOff)}${offWarn}` });
+
+        journeyData.gpsProgress = {
+          pct: proj.t * 100,
+          point: proj.point,
+          distOff: proj.distOff,
+          distToEnd: proj.distToEnd
+        };
+      } else {
+        logs.push({ k: 'Étape', v: `<span class="acc-warn">Coordonnées indisponibles — utilisation du temps</span>` });
+        journeyData.gpsProgress = null;
+      }
+    } else {
+      journeyData.gpsProgress = null;
+    }
+
+    logGps(journeyData, logs);
+    updateProgressBarDOM(journeyData);
+    updateMapUserMarkers(journeyData);
+  }
+}
+
+function updateProgressBarDOM(journeyData) {
+  const section = result.querySelector(`[data-id="${journeyData.journeyId}"]`);
+  if (!section || !journeyData.progress) return;
+  const oldBar = section.querySelector('.trip-progress');
+  if (!oldBar) return;
+  const html = renderProgressBar(journeyData.progress, journeyData.gpsProgress);
+  oldBar.outerHTML = html;
+}
+
+function updateMapUserMarkers(journeyData) {
+  const mapState = journeyMaps.get(journeyData.journeyId);
+  if (!mapState?.map) return;
+  const map = mapState.map;
+
+  // Clear previous user markers/lines
+  if (mapState.userMarker) { map.removeLayer(mapState.userMarker); mapState.userMarker = null; }
+  if (mapState.projMarker) { map.removeLayer(mapState.projMarker); mapState.projMarker = null; }
+  if (mapState.offRouteLine) { map.removeLayer(mapState.offRouteLine); mapState.offRouteLine = null; }
+
+  if (!gpsEnabled || !userPos) return;
+
+  // User position marker (cyan pulsing)
+  const userIcon = L.divIcon({
+    className: '',
+    html: '<div class="map-user"></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  });
+  mapState.userMarker = L.marker(userPos, { icon: userIcon, zIndexOffset: 2000 })
+    .bindPopup('<b>📍 Ma position</b>')
+    .addTo(map);
+
+  // Projected position on the current leg
+  if (journeyData.gpsProgress?.point) {
+    const projIcon = L.divIcon({
+      className: '',
+      html: '<div class="map-user-proj"></div>',
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+    mapState.projMarker = L.marker(journeyData.gpsProgress.point, { icon: projIcon, zIndexOffset: 1500 })
+      .bindPopup(`<b>Projection sur trajet</b><br>${formatKm(journeyData.gpsProgress.distToEnd)} restants`)
+      .addTo(map);
+
+    // Dashed line from user to projection (showing how off-route they are)
+    mapState.offRouteLine = L.polyline([userPos, journeyData.gpsProgress.point], {
+      color: '#00f0ff',
+      weight: 1.5,
+      opacity: 0.6,
+      dashArray: '3, 5'
+    }).addTo(map);
+  }
+
+  // On the FIRST time we add a user marker for this map, refit to include user
+  if (!mapState.userFitDone && mapState.routeCoords) {
+    mapState.userFitDone = true;
+    const allBoundsCoords = [...mapState.routeCoords, userPos];
+    map.fitBounds(L.latLngBounds(allBoundsCoords), { padding: [30, 30], maxZoom: 11 });
+  }
+
+  // Add recenter-on-me control if not already added
+  if (!mapState.recenterControl) {
+    const Recenter = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: function() {
+        const el = L.DomUtil.create('div', 'leaflet-control-recenter');
+        el.innerHTML = '◎';
+        el.title = 'Centrer sur ma position';
+        L.DomEvent.on(el, 'click', (e) => {
+          L.DomEvent.stop(e);
+          if (userPos) map.flyTo(userPos, Math.max(map.getZoom(), 12), { duration: 0.6 });
+        });
+        L.DomEvent.disableClickPropagation(el);
+        return el;
+      }
+    });
+    mapState.recenterControl = new Recenter();
+    mapState.recenterControl.addTo(map);
+  }
+}
+
+async function loadAll() {
+  if (!buses.length) {
+    result.innerHTML = `<div class="message">Aucune ligne à suivre. Ajoutez-en une via le menu en haut.</div>`;
+    statusEl.innerHTML = '// AUCUNE LIGNE //';
+    return;
+  }
+
+  addBtn.disabled = true;
+  refreshBtn.disabled = true;
+  result.innerHTML = '';
+  journeyMaps.clear();
+  statusEl.innerHTML = `<span class="loader"></span>// CONNEXION À L'API SIRI //`;
+
+  try {
+    const { data, proxyUsed } = await fetchData();
+    const frames = data.estimatedJourneyVersionFrame ?? [];
+
+    const allHtml = [];
+    const journeys = [];
+    let foundCount = 0;
+    let idx = 0;
+    for (const bus of buses) {
+      const matches = [];
+      for (const frame of frames) {
+        for (const journey of (frame.estimatedVehicleJourney ?? [])) {
+          if ((journey.publishedLineName?.[0]?.value ?? '') === bus) matches.push(journey);
+        }
+      }
+      if (matches.length) {
+        foundCount++;
+        for (const j of matches) {
+          const rendered = renderJourney(j, idx++);
+          allHtml.push(rendered.html);
+          journeys.push(rendered);
+        }
+      } else {
+        allHtml.push(`
+          <div class="message">
+            Aucun bus <span class="code">${escapeHtml(bus)}</span> actif dans le flux.
+            <br><br>
+            <span style="font-size:10px;letter-spacing:0.2em">// TRAJET TERMINÉ OU PAS ENCORE DÉMARRÉ //</span>
+          </div>`);
+      }
+    }
+
+    lastData = { journeys };
+
+    const ts = data.responseTimestamp ? new Date(data.responseTimestamp).toLocaleTimeString('fr-FR') : '';
+    const proxyTag = proxyUsed > 0 ? ` · <span class="warn">via proxy</span>` : '';
+    statusEl.innerHTML = `// ${ts} · <span class="ok">${foundCount}/${buses.length} ligne${buses.length>1?'s':''} active${buses.length>1?'s':''}</span>${proxyTag} //`;
+
+    result.innerHTML = allHtml.join('');
+
+    // bind map buttons
+    result.querySelectorAll('.map-btn').forEach(btn => {
+      btn.addEventListener('click', () => toggleMap(btn));
+    });
+
+    // If GPS is already active, recompute projections for the new journey data
+    if (gpsEnabled && userPos) {
+      onUserPositionUpdate();
+    }
+
+  } catch (err) {
+    statusEl.innerHTML = '// ERREUR SYSTÈME //';
+    result.innerHTML = `
+      <div class="message error">
+        Impossible de récupérer les données : ${escapeHtml(err.message)}
+        <br><br>
+        <span style="font-size:11px;letter-spacing:0.2em;color:var(--ink-dim)">
+          // TOUTES LES SOURCES ONT ÉCHOUÉ //
+        </span>
+      </div>`;
+  } finally {
+    addBtn.disabled = false;
+    refreshBtn.disabled = false;
+  }
+}
+
+function renderChips() {
+  chipsDisplay.innerHTML = buses.length
+    ? buses.map(b => `<span class="chip">${escapeHtml(b)}</span>`).join('')
+    : `<span style="color:var(--ink-faded);font-size:11px;letter-spacing:0.15em">aucune ligne</span>`;
+
+  chipsEdit.innerHTML = buses.map((b, i) => `
+    <span class="chip">
+      ${escapeHtml(b)}
+      <button class="chip-remove" data-i="${i}" title="Retirer">×</button>
+    </span>
+  `).join('');
+
+  chipsEdit.querySelectorAll('.chip-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const i = parseInt(btn.dataset.i, 10);
+      buses.splice(i, 1);
+      saveBuses();
+      renderChips();
+      loadAll();
+    });
+  });
+}
+
+function addBus() {
+  const val = input.value.trim();
+  if (!val) return;
+  if (buses.includes(val)) { input.value = ''; return; }
+  buses.push(val);
+  saveBuses();
+  input.value = '';
+  renderChips();
+  loadAll();
+}
+
+addBtn.addEventListener('click', addBus);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addBus(); } });
+refreshBtn.addEventListener('click', loadAll);
+gpsBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (gpsEnabled) stopGPS();
+  else startGPS();
+});
+
+renderChips();
+loadAll();
+</script>
+</body>
+</html>
