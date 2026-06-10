@@ -2086,26 +2086,31 @@ async function loadFleet() {
   statusEl.innerHTML = `<span class="loader"></span>Chargement de la flotte…`;
   try {
     const { data, proxyUsed } = await fetchData();
-    const sums = [];
+    const all = [];
     for (const frame of (data.estimatedJourneyVersionFrame ?? [])) {
-      for (const j of (frame.estimatedVehicleJourney ?? [])) sums.push(summarizeJourney(j));
+      for (const j of (frame.estimatedVehicleJourney ?? [])) all.push(summarizeJourney(j));
     }
 
-    // en route d'abord, puis départs à venir, puis terminés ; au sein
-    // de chaque groupe les plus en retard en premier
-    const stateRank = { 'en-route': 0, 'upcoming': 1, 'done': 2 };
+    // Les bus ayant fini leur trajet ne sont gardés que pour la recherche
+    // individuelle (« Mes lignes ») : on les exclut de la vue flotte.
+    const doneCount = all.filter(s => s.state === 'done').length;
+    const sums = all.filter(s => s.state !== 'done');
+
+    // en route d'abord, puis départs à venir ; au sein de chaque groupe
+    // les plus en retard en premier
+    const stateRank = { 'en-route': 0, 'upcoming': 1 };
     sums.sort((a, b) =>
       (stateRank[a.state] - stateRank[b.state]) || ((b.delay ?? -Infinity) - (a.delay ?? -Infinity))
     );
 
     const enRoute = sums.filter(s => s.state === 'en-route');
-    const knownDelays = sums.filter(s => s.delay !== null && s.state !== 'done');
+    const knownDelays = sums.filter(s => s.delay !== null);
     const onTime = knownDelays.filter(s => s.delay <= 5).length;
     const late = knownDelays.filter(s => s.delay > 5).length;
     const lateDelays = knownDelays.filter(s => s.delay > 0).map(s => s.delay);
     const avgLate = lateDelays.length ? Math.round(lateDelays.reduce((a, b) => a + b, 0) / lateDelays.length) : 0;
 
-    const stateLabels = { 'en-route': 'en route', 'upcoming': 'départ à venir', 'done': 'trajet terminé' };
+    const stateLabels = { 'en-route': 'en route', 'upcoming': 'départ à venir' };
     lastFleet = sums;
 
     result.innerHTML = `
@@ -2114,11 +2119,12 @@ async function loadFleet() {
       </div>
       <div id="fleetMapWrap"></div>
       <div class="fleet-summary">
-        <div class="stat-card"><div class="num">${sums.length}</div><div class="lbl">Bus au total</div></div>
+        <div class="stat-card"><div class="num">${sums.length}</div><div class="lbl">Bus actifs</div></div>
         <div class="stat-card"><div class="num">${enRoute.length}</div><div class="lbl">En route</div></div>
         <div class="stat-card ok"><div class="num">${onTime}</div><div class="lbl">À l'heure (≤5 min)</div></div>
         <div class="stat-card late"><div class="num">${late}</div><div class="lbl">En retard${avgLate ? ` · ${avgLate} min moy.` : ''}</div></div>
       </div>
+      ${sums.length ? '' : `<div class="message">Aucun bus en circulation pour le moment.${doneCount ? `<br><br><span style="font-size:11px">${doneCount} trajet${doneCount > 1 ? 's' : ''} terminé${doneCount > 1 ? 's' : ''} — recherchez une ligne précise dans « Mes lignes » pour le revoir.</span>` : ''}</div>`}
       <div class="fleet-list">
         ${sums.map(s => `
           <div class="fleet-row ${s.state}">
@@ -2139,7 +2145,8 @@ async function loadFleet() {
 
     const ts = data.responseTimestamp ? new Date(data.responseTimestamp).toLocaleTimeString('fr-FR') : '';
     const proxyTag = proxyUsed > 0 ? ` · <span class="warn">via proxy</span>` : '';
-    statusEl.innerHTML = `${ts} · <span class="ok">${sums.length} bus</span> · ${enRoute.length} en route${proxyTag}`;
+    const doneTag = doneCount ? ` · ${doneCount} terminé${doneCount > 1 ? 's' : ''} masqué${doneCount > 1 ? 's' : ''}` : '';
+    statusEl.innerHTML = `${ts} · <span class="ok">${sums.length} bus actifs</span> · ${enRoute.length} en route${doneTag}${proxyTag}`;
   } catch (err) {
     statusEl.innerHTML = 'Erreur de connexion';
     result.innerHTML = `<div class="message error">Impossible de récupérer les données : ${escapeHtml(err.message)}</div>`;
